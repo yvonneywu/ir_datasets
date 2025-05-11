@@ -265,11 +265,11 @@ def get_data_min_max_inter(records, device):
 				batch_min.append(torch.min(non_missing_vals))
 				batch_max.append(torch.max(non_missing_vals))
 
-		batch_min = torch.stack(batch_min).to(device)
-		batch_max = torch.stack(batch_max).to(device)
+		# batch_min = torch.stack(batch_min).to(device)
+		# batch_max = torch.stack(batch_max).to(device)
 
-		# batch_min = torch.stack([tensor.cuda() for tensor in batch_min]) ## with cuda gpu
-		# batch_max = torch.stack([tensor.cuda() for tensor in batch_max])
+		batch_min = torch.stack([tensor.cuda() for tensor in batch_min]) ## with cuda gpu
+		batch_max = torch.stack([tensor.cuda() for tensor in batch_max])
 
 		if (data_min is None) and (data_max is None):
 			data_min = batch_min

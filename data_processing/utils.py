@@ -464,3 +464,43 @@ def subsample_timepoints(data, time_steps, mask, percentage_tp_to_sample=None):
             mask[i, tp_to_set_to_zero] = 0.
 
     return data, time_steps, mask
+
+def get_data_min_max_inter(records, device):
+	inf = torch.Tensor([float("Inf")])[0].to(device)
+
+	data_min, data_max, time_max = None, None, -inf
+
+	for b, (record_id, tt, vals, mask) in enumerate(records):
+		n_features = vals.size(-1)
+
+		batch_min = []
+		batch_max = []
+		for i in range(n_features):
+			non_missing_vals = vals[:,i][mask[:,i] == 1]
+			if len(non_missing_vals) == 0:
+				batch_min.append(inf)
+				batch_max.append(-inf)
+			else:
+				batch_min.append(torch.min(non_missing_vals))
+				batch_max.append(torch.max(non_missing_vals))
+
+		batch_min = torch.stack(batch_min).to(device)
+		batch_max = torch.stack(batch_max).to(device)
+
+		# batch_min = torch.stack([tensor.cuda() for tensor in batch_min]) ## with cuda gpu
+		# batch_max = torch.stack([tensor.cuda() for tensor in batch_max])
+
+		if (data_min is None) and (data_max is None):
+			data_min = batch_min
+			data_max = batch_max
+		else:
+			data_min = torch.min(data_min, batch_min)
+			data_max = torch.max(data_max, batch_max)
+
+		time_max = torch.max(time_max, tt.max())
+
+	# print('data_max:', data_max)
+	# print('data_min:', data_min)
+	# print('time_max:', time_max)
+
+	return data_min, data_max, time_max

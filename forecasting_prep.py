@@ -10,31 +10,22 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc
 
 from logger import setup_logger
 from config import Config
-from data_loader import load_forecasting_data
+from data_loader_full import load_forecasting_data
 # from model.classification import TSClassification
 import sys
 
+from momentfm.utils.utils import control_randomness
+control_randomness(seed=0) # Set random seeds for PyTorch, Numpy etc.
+
+from momentfm import MOMENTPipeline
+from momentfm.data.informer_dataset import InformerDataset
+from torch.utils.data import DataLoader
+from momentfm.utils.masking import Masking
+from tqdm import tqdm
+from momentfm.utils.forecasting_metrics import mse, mae
+
 # Define device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-def subsample_timepoints(data, time_steps, mask, config):
-    # Subsample percentage of points from each time series
-    for i in range(data.size(0)):
-        # take mask for current training sample and sum over all features --
-        # figure out which time points don't have any measurements at all in this batch
-        current_mask = mask[i].sum(-1).cpu()
-        non_missing_tp = np.where(current_mask > 0)[0]
-        n_tp_current = len(non_missing_tp)
-        n_to_sample = int(n_tp_current * config.percentage_tp_to_sample)
-        subsampled_idx = sorted(np.random.choice(
-            non_missing_tp, n_to_sample, replace=False))
-        tp_to_set_to_zero = np.setdiff1d(non_missing_tp, subsampled_idx)
-
-        data[i, tp_to_set_to_zero] = 0.
-        if mask is not None:
-            mask[i, tp_to_set_to_zero] = 0.
-
-    return data, time_steps, mask
 
 
 if __name__ == '__main__':
@@ -67,18 +58,82 @@ if __name__ == '__main__':
     val_loader = data_obj["val_dataloader"]
     test_loader = data_obj["test_dataloader"]
 
-    for batch_idx, batch in enumerate(train_loader):
+    model = MOMENTPipeline.from_pretrained(
+        "AutonLab/MOMENT-1-small", 
+        model_kwargs={
+            'task_name': 'forecasting', #must specify the horizon
+            'forecast_horizon': 512
+        },
+    )
+    model.init()
+
+    # Number of parameters in the encoder
+    num_params = sum(p.numel() for p in model.encoder.parameters())
+    print(f"Number of parameters: {num_params}")
+
+    model = model.to(device).float()
+
+    total_mse = 0.0
+    total_mae = 0.0
+    total_samples = 0
+    batch_count = 0
+
+    for batch_idx, batch in enumerate(test_loader):
         # Get data
         
         seen_data, seen_tp, seen_mask = batch['observed_data'], batch['observed_tp'], batch['observed_mask'],
         future_data, future_tp, future_mask = batch['data_to_predict'], batch['tp_to_predict'], batch['mask_predicted_data']  
-        print('checking data shape', seen_data.shape, future_data.shape)
+        # print('checking data shape', seen_data.shape, future_data.shape)
+        ## prepare the data for moment model
+        n_channels = seen_data.shape[2] 
 
 
-        #seen to predict unseen part e.g., previsou 24hrs to predict later 24 hrs
+        seen_data = seen_data.permute(0, 2, 1).to(device).float()
+        future_data = future_data.permute(0, 2, 1).to(device).float()
+        future_mask = future_mask.permute(0, 2, 1).to(device).float()
 
-    
-    
-         #### modeling ####
-         # calcualte the mse between the prediction on the interpolated points. 
-         # report the mse and rmse and mae for the interpolated points.
+        # pad to 512 
+        seen_data = torch.nn.functional.pad(seen_data, (0, 512 - seen_data.shape[2]), mode='constant', value=0)
+        future_data = torch.nn.functional.pad(future_data, (0, 512 - future_data.shape[2]), mode='constant', value=0)
+        future_mask = torch.nn.functional.pad(future_mask, (0, 512 - future_mask.shape[2]), mode='constant', value=0)
+
+        # Store original dimensions
+        batch_size, n_channels, seq_len = seen_data.shape
+        # then reshape to the moment dimensions:
+        # seen_data = seen_data.reshape(-1,1, seq_len)
+        # future_data = future_data.reshape(-1,1, seq_len)
+        # future_mask = future_mask.reshape(-1,1, seq_len)
+
+        # load the moment model 
+        output = model(x_enc=seen_data)
+        pred_y = output.forecast
+        # print('checking pred_y shape', pred_y.shape)
+
+        # compute error data_to_predict & pred_y * mask_predicted_data
+
+        # Replace your current MSE calculation with this
+        if future_mask.sum() > 0:
+            mse_loss = ((future_data - pred_y)**2) * future_mask
+            mse_loss = mse_loss.sum() / future_mask.sum()
+
+            mae_loss = (future_data - pred_y).abs()
+            mae_loss = mae_loss * future_mask
+            mae_loss = mae_loss.sum() / future_mask.sum()
+            
+            # Skip extreme values
+            if mse_loss.item() < 1000 and not torch.isnan(mse_loss) and not torch.isinf(mse_loss):
+                total_mse += mse_loss.item()
+                total_mae += mae_loss.item()
+                batch_count += 1
+            else:
+                print(f"Skipping batch {batch_idx} with extreme MSE: {mse_loss.item()}")
+        else:
+            print(f"Batch {batch_idx} has no prediction points (mask sum is zero)")
+
+        print('checking mse loss', mse_loss.item())
+        print('checking mae loss', mae_loss.item())
+    print(total_mse)
+    fina_mse = total_mse / batch_count
+    fina_mae = total_mae / batch_count
+    print('final mse', fina_mse)
+    print('final mae', fina_mae)

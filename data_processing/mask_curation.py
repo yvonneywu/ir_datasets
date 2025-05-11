@@ -27,7 +27,7 @@ class CLDataCollator:
 
     def __call__(self, batch):
         batch_size = batch['data'].shape[0]
-        D = 36  # 36-physionet dataset
+        D = batch['data'].shape[2]  # 36-physionet dataset
         
         # Create output tensors
         time_batch = torch.zeros([batch_size, self.max_len])
@@ -38,9 +38,13 @@ class CLDataCollator:
             mask_batch = torch.zeros([batch_size, self.max_len, D])
         
         # Process all samples in batch at once
-        data = batch['data'][:,:,5:]  # Only use time series features
+        # data = batch['data'][:,:,5:]  # Only use time series features
+        # times = batch['time_steps']
+        # masks = batch['mask'][:,:,5:]  # Only use time series masks
+
+        data = batch['data'] # Only use time series features
         times = batch['time_steps']
-        masks = batch['mask'][:,:,5:]  # Only use time series masks
+        masks = batch['mask']  # Only use time series masks
         
         # Process each sample in batch
         for idx in range(batch_size):
@@ -54,6 +58,15 @@ class CLDataCollator:
             # Process sample
             v1, t1, m1 = self._per_seq_sampling(instance)
             len1 = v1.size(0)
+
+            
+            # Add truncation logic
+            if len1 > self.max_len:
+                print(f"Warning: Sequence length {len1} exceeds max_len {self.max_len}, truncating")
+                v1 = v1[:self.max_len]
+                t1 = t1[:self.max_len]
+                m1 = m1[:self.max_len]
+                len1 = self.max_len
             
             # Store in batch tensors
             value_batch[idx, :len1] = v1
@@ -115,6 +128,7 @@ class CLDataCollator:
             
             # om1 = m1.clone()
             m1 = self._seg_masking(mask = m1, timestamps = t1)
+
             
 
         return (v1, t1, m1)
