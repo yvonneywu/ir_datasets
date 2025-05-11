@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from einops import rearrange
-from peft import LoraConfig, TaskType
+from peft import LoraConfig, TaskType, get_peft_model
 from models.GPT2_arch import AccustumGPT2Model
 
 class Encoder_PCA(nn.Module):
@@ -60,8 +60,8 @@ class Model(nn.Module):
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
         self.gpt2 = get_peft_model(self.gpt2, peft_config)
         
-        word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
-        
+        # word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
+        word_embedding = torch.tensor(torch.load(configs.word_embedding_path, weights_only=False)).to(device=device)
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
                 param.requires_grad = True

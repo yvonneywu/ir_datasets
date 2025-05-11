@@ -1,10 +1,10 @@
 export CUDA_VISIBLE_DEVICES=0
 
-seq_len=96
+seq_len=512
 model=CALF
 
 
-for pred_len in 720
+for pred_len in 512
 do
 
 python run.py \
@@ -20,7 +20,7 @@ python run.py \
     --batch_size 256 \
     --learning_rate 0.0005 \
     --lradj type1 \
-    --train_epochs 100 \
+    --train_epochs 10 \
     --d_model 768 \
     --n_heads 4 \
     --d_ff 768 \

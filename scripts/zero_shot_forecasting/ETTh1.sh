@@ -3,10 +3,6 @@ export CUDA_VISIBLE_DEVICES=5
 seq_len=96
 model=CALF
 
-for target_data in ETTm1 ETTm2
-do
-    for pred_len in 96 192 336 720
-        do
 
 python run.py \
     --root_path ./datasets/ETT-small/ \

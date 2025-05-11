@@ -8,11 +8,11 @@ do
 
 python run.py \
     --root_path ./datasets/ETT-small/ \
-    --data_path ETTh2.csv \
+    --data_path ETTh1.csv \
     --is_training 1 \
     --task_name long_term_forecast \
     --model_id ETTh2_$model'_'$seq_len'_'$pred_len \
-    --data ETTh2 \
+    --data ETTh1 \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
